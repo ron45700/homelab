@@ -1,0 +1,18 @@
+services:
+  # Checks every service on a schedule and keeps an up/down history.
+  # All state (monitors, history, the admin user) is in ./appdata.
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma
+    volumes:
+      - ./appdata/uptime-kuma:/app/data
+      # Docker-container monitors need the Docker socket. Off on purpose (same
+      # reasoning as in the dashboard stack); HTTP monitors don't need it.
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "3001:3001"
+    # Monitors reach services of other stacks / streameron through the host's
+    # published ports: http://host.docker.internal:<port>
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

@@ -27,8 +27,9 @@ docker compose up -d
 | Stack | Services | Address | Status |
 |---|---|---|---|
 | `dashboard` | Homarr + its Tailscale machine | http://localhost:7575, https://dashboard.<tailnet>.ts.net | in use |
+| `monitoring` | Uptime Kuma | http://localhost:3001 | in use |
 
-Planned: `monitoring` (Uptime Kuma, WUD), `tools` (IT-Tools, FileBrowser), `dockge`,
+Planned: WUD (into `monitoring`), `tools` (IT-Tools, FileBrowser), `dockge`,
 `network` (Pi-hole), `automation` (n8n), `cloud` (Nextcloud AIO). Host-level tools that are not
 containers (Cockpit, Tailscale SSH) will be documented under `docs/` once the server runs Linux.
 
@@ -70,3 +71,25 @@ Stop the stack, copy `stacks/dashboard/appdata/` and the `.env` to the new host.
 
 `appdata/tailscale/` is the `dashboard` machine's identity (private key, treat as a secret).
 Copied along, the machine keeps its name. Never run the same state on two hosts at once.
+
+## monitoring (Uptime Kuma)
+
+No `.env` needed. `cd stacks/monitoring`, `docker compose up -d`, open http://localhost:3001
+and create the admin user (choose the embedded SQLite database if asked).
+
+Add one **HTTP(s)** monitor per service. A plain page check is enough for most; for the *arr
+apps the `/ping` endpoint answers without login.
+
+| Service | Monitor URL |
+|---|---|
+| Jellyfin | `http://host.docker.internal:8096/health` |
+| Seerr | `http://host.docker.internal:5055/api/v1/status` |
+| Sonarr | `http://host.docker.internal:8989/ping` |
+| Radarr | `http://host.docker.internal:7878/ping` |
+| Prowlarr | `http://host.docker.internal:9696/ping` |
+| Bazarr | `http://host.docker.internal:6767` |
+| qBittorrent | `http://host.docker.internal:8080` |
+| Homarr | `http://host.docker.internal:7575` |
+
+Known limit: Uptime Kuma runs on the same machine it watches, so it reports a single service
+going down, not the whole host going down.
