@@ -1,0 +1,47 @@
+services:
+  # Homarr v1+ (homarr-labs). Replaces the old ajnart/homarr that used to live
+  # in the streameron compose file. All state is in ./appdata (git-ignored).
+  homarr:
+    image: ghcr.io/homarr-labs/homarr:latest
+    container_name: homarr
+    environment:
+      # Encrypts the integration API keys stored in the database.
+      # Must never change once set, or the saved integrations become unreadable.
+      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
+    volumes:
+      - ./appdata/homarr:/appdata
+      # Docker integration (container status/start/stop from the dashboard).
+      # Off on purpose: access to this socket is effectively full control of
+      # the host. Uncomment only if the feature is actually wanted.
+      # - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "7575:7575"
+    # This stack shares no Docker network with streameron, so integrations
+    # reach those services through the host's published ports:
+    #   http://host.docker.internal:8989  (Sonarr), :7878 (Radarr), ...
+    # Docker Desktop provides that name by itself; this line makes the same
+    # name work on a Linux host too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # Gives the dashboard its own machine in the tailnet, named "dashboard":
+  #   https://dashboard.<tailnet>.ts.net
+  # Serves ONLY Homarr (see tailscale/serve.json). Not shared with anyone;
+  # it exists so the dashboard has an easy-to-find address.
+  tailscale-homarr:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-homarr
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}     # only needed if ./appdata/tailscale has no state yet
+      - TS_AUTH_ONCE=true
+      - TS_HOSTNAME=dashboard
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=true            # no /dev/net/tun needed; works on Docker Desktop
+    volumes:
+      - ./appdata/tailscale:/var/lib/tailscale   # machine identity (secret, not in git)
+      - ./tailscale:/config:ro                   # serve.json (in git)
+    depends_on:
+      - homarr
+    restart: unless-stopped
