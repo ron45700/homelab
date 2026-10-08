@@ -4,6 +4,21 @@ Everything on the home server that is not the streaming system. The streaming st
 (Jellyfin, *arr, qBittorrent, ...) lives in its own repo, `streameron`, and the two repos do not
 depend on each other.
 
+Currently in the testing stage: a desktop PC (Windows + Docker Desktop) simulates the server
+before everything moves to a dedicated Linux machine. What is planned for each stage is in
+[docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Screenshots
+
+### Dashboard (Homarr)
+
+![Homarr dashboard](docs/images/dashboard.png)
+
+<!-- Add more as the project grows, one heading per system:
+### Monitoring (Uptime Kuma)
+![Uptime Kuma](docs/images/uptime-kuma.png)
+-->
+
 ## Layout
 
 One folder per stack under `stacks/`. Each stack is self-contained:
@@ -14,6 +29,8 @@ stacks/<name>/
   .env.example    # template for secrets/settings -> copy to .env
   appdata/        # the apps' data (git-ignored, created on first run)
 ```
+
+Outside `stacks/`: `docs/ROADMAP.md` (what is planned) and `docs/images/` (screenshots).
 
 Run a stack from inside its folder:
 
@@ -29,9 +46,7 @@ docker compose up -d
 | `dashboard` | Homarr + its Tailscale machine | http://localhost:7575, https://dashboard.<tailnet>.ts.net | in use |
 | `monitoring` | Uptime Kuma | http://localhost:3001 | in use |
 
-Planned: WUD (into `monitoring`), `tools` (IT-Tools, FileBrowser), `dockge`,
-`network` (Pi-hole), `automation` (n8n), `cloud` (Nextcloud AIO). Host-level tools that are not
-containers (Cockpit, Tailscale SSH) will be documented under `docs/` once the server runs Linux.
+Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md), by stage.
 
 ## Conventions
 
@@ -90,6 +105,13 @@ apps the `/ping` endpoint answers without login.
 | Bazarr | `http://host.docker.internal:6767` |
 | qBittorrent | `http://host.docker.internal:8080` |
 | Homarr | `http://host.docker.internal:7575` |
+
+### Showing it in Homarr
+
+Homarr's Uptime Kuma integration reads a **status page**, not the monitors directly. In Uptime
+Kuma: Status Pages -> New Status Page, slug `default`, add a group with the monitors, save. Then
+in Homarr add the integration with URL `http://host.docker.internal:3001` and "No secrets".
+Note that a status page is readable without login by anyone who can reach port 3001.
 
 Known limit: Uptime Kuma runs on the same machine it watches, so it reports a single service
 going down, not the whole host going down.
