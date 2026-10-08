@@ -75,6 +75,9 @@ Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md), by
    - **Integration URL** (used by Homarr itself): `http://host.docker.internal:<port>`
    - **App URL** (what the browser opens): the host's LAN IP or Tailscale name
 
+   The two are not interchangeable: the host's name resolves in the browser but not inside the
+   Homarr container (`ENOTFOUND`), and `host.docker.internal` means nothing to the browser.
+
 | Service | Port |
 |---|---|
 | Jellyfin | 8096 |
@@ -95,7 +98,8 @@ Copied along, the machine keeps its name. Never run the same state on two hosts 
 
 ## monitoring (Uptime Kuma)
 
-No `.env` needed. `cd stacks/monitoring`, `docker compose up -d`, open http://localhost:3001
+Uptime Kuma itself needs no settings (the stack's `.env` is for WUD, below).
+`cd stacks/monitoring`, `docker compose up -d`, open http://localhost:3001
 and create the admin user (choose the embedded SQLite database if asked).
 
 Add one **HTTP(s)** monitor per service. A plain page check is enough for most; for the *arr
@@ -125,8 +129,12 @@ going down, not the whole host going down.
 ## monitoring (WUD)
 
 WUD (What's Up Docker) lists every running container and whether a newer image exists for it.
-Open http://localhost:3000. No login and no `.env`. It only watches: no triggers are configured,
-so it never pulls or restarts anything. Updating stays manual:
+It refuses to start without an administrator: copy `stacks/monitoring/.env.example` to `.env`,
+set `WUD_AUTH_ADMIN_USER` and `WUD_AUTH_ADMIN_PASSWORD`, then `docker compose up -d`, open
+http://localhost:3000 and log in with them. The user is kept in `appdata/wud/`.
+
+It only watches: no triggers are configured, so it never pulls or restarts anything. Updating
+stays manual:
 
 ```bash
 cd <the stack's folder>
@@ -137,8 +145,12 @@ docker compose up -d
 It reads Docker through `socket-proxy` (same compose file), which allows listing containers and
 images and refuses every write. `socket-proxy` has no published port; only this stack reaches it.
 
-Containers on a floating tag such as `latest` are compared by image digest; containers pinned to
-a version tag (for example `recyclarr:8`) are compared by version number.
+Containers on a floating tag such as `latest` are compared by image digest, so the update shows
+as `sha256:...` and only means a new build was published; containers pinned to a version tag
+(for example `recyclarr:8`) are compared by version number.
+
+Both commands need Docker Desktop running; "cannot find the file specified" on the
+`dockerDesktopLinuxEngine` pipe means it is not.
 
 ## tools (IT-Tools)
 
