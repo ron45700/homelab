@@ -40,6 +40,10 @@ services:
     environment:
       - WUD_WATCHER_LOCAL_HOST=socket-proxy
       - WUD_WATCHER_LOCAL_PORT=2375
+      - WUD_AUTH_ADMIN_USER=${WUD_AUTH_ADMIN_USER}
+      - WUD_AUTH_ADMIN_PASSWORD=${WUD_AUTH_ADMIN_PASSWORD}
+    volumes:
+      - ./appdata/wud:/store
     ports:
       - "3000:3000"
     depends_on:
