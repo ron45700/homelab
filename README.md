@@ -44,7 +44,8 @@ docker compose up -d
 | Stack | Services | Address | Status |
 |---|---|---|---|
 | `dashboard` | Homarr + its Tailscale machine | http://localhost:7575, https://dashboard.<tailnet>.ts.net | in use |
-| `monitoring` | Uptime Kuma | http://localhost:3001 | in use |
+| `monitoring` | Uptime Kuma, WUD (+ socket-proxy) | http://localhost:3001, http://localhost:3000 | in use |
+| `tools` | IT-Tools | http://localhost:8081 | in use |
 
 Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md), by stage.
 
@@ -57,7 +58,12 @@ Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md), by
   per-service Tailscale container is the exception, for a service that deserves its own
   easy-to-find name (the dashboard) or is shared with other people.
 - **Secrets** go in each stack's `.env`, never in git.
-- The Docker socket is not mounted into a container unless a feature really needs it.
+- **One container per tool, grouped into stacks by purpose.** Tools are never merged into one
+  container; a stack (one `compose.yaml`) is the unit that is started, stopped and moved.
+- **Docker socket.** Access to it is effectively control of the host, so no app container mounts
+  it. A tool that only needs to *read* Docker state goes through `socket-proxy` (in the
+  `monitoring` stack), which exposes a filtered read-only API. A tool that must *manage*
+  containers (Dockge, later) is a deliberate, documented exception.
 
 ## dashboard (Homarr)
 
@@ -115,3 +121,25 @@ Note that a status page is readable without login by anyone who can reach port 3
 
 Known limit: Uptime Kuma runs on the same machine it watches, so it reports a single service
 going down, not the whole host going down.
+
+## monitoring (WUD)
+
+WUD (What's Up Docker) lists every running container and whether a newer image exists for it.
+Open http://localhost:3000. No login and no `.env`. It only watches: no triggers are configured,
+so it never pulls or restarts anything. Updating stays manual:
+
+```bash
+cd <the stack's folder>
+docker compose pull
+docker compose up -d
+```
+
+It reads Docker through `socket-proxy` (same compose file), which allows listing containers and
+images and refuses every write. `socket-proxy` has no published port; only this stack reaches it.
+
+Containers on a floating tag such as `latest` are compared by image digest; containers pinned to
+a version tag (for example `recyclarr:8`) are compared by version number.
+
+## tools (IT-Tools)
+
+`cd stacks/tools`, `docker compose up -d`, open http://localhost:8081. Static web app, no data.

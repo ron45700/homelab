@@ -1,0 +1,9 @@
+services:
+  # Collection of developer utilities (converters, generators, encoders...).
+  # Fully static: no data, no login, nothing to configure or back up.
+  it-tools:
+    image: corentinth/it-tools:latest
+    container_name: it-tools
+    ports:
+      - "8081:80"   # 8080 is taken by qBittorrent (streameron)
+    restart: unless-stopped

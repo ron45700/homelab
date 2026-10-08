@@ -6,13 +6,42 @@ services:
     container_name: uptime-kuma
     volumes:
       - ./appdata/uptime-kuma:/app/data
-      # Docker-container monitors need the Docker socket. Off on purpose (same
-      # reasoning as in the dashboard stack); HTTP monitors don't need it.
-      # - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "3001:3001"
     # Monitors reach services of other stacks / streameron through the host's
     # published ports: http://host.docker.internal:<port>
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # The only container in this repo that touches the Docker socket.
+  # It exposes a filtered, READ-ONLY slice of the Docker API to WUD: listing
+  # containers and images is allowed, everything that changes something
+  # (start/stop/create/exec/delete) is refused, because POST stays 0.
+  # No published port on purpose: reachable only by the containers of this
+  # stack, under the name "socket-proxy".
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: socket-proxy
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - POST=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  # Shows which running containers have a newer image available.
+  # Watch only: no triggers are configured, so it never updates anything by
+  # itself. Talks to Docker through socket-proxy, not the socket directly.
+  wud:
+    image: getwud/wud:latest
+    container_name: wud
+    environment:
+      - WUD_WATCHER_LOCAL_HOST=socket-proxy
+      - WUD_WATCHER_LOCAL_PORT=2375
+    ports:
+      - "3000:3000"
+    depends_on:
+      - socket-proxy
     restart: unless-stopped
