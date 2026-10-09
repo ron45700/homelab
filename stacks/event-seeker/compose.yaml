@@ -1,0 +1,27 @@
+services:
+  # Concert aggregator with email alerts per followed artist. Own project:
+  # https://github.com/ron45700/event-seeker. The image is built and published by that
+  # repo's GitHub Action on every push to main, so nothing is built on this machine.
+  # Update: docker compose pull && docker compose up -d (or the Update button in Dockge).
+  event-seeker:
+    image: ghcr.io/ron45700/event-seeker:latest
+    container_name: event-seeker
+    environment:
+      - FETCH_INTERVAL_MINUTES=${FETCH_INTERVAL_MINUTES:-60}
+      # Email to subscribers. Off until EMAIL_ENABLED=true and the SMTP values are set.
+      - EMAIL_ENABLED=${EMAIL_ENABLED:-false}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      # Telegram message to the operator when a venue site stops returning shows.
+      # Off while the two values are empty.
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - SOURCE_ALERT_AFTER_FAILURES=${SOURCE_ALERT_AFTER_FAILURES:-3}
+    volumes:
+      # The SQLite database (users, subscriptions, events) and the thumbnail cache.
+      - ./appdata/event-seeker:/app/data
+    ports:
+      - "8765:8765"
+    restart: unless-stopped

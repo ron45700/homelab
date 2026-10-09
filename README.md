@@ -46,6 +46,7 @@ docker compose up -d
 | `dashboard` | Homarr + its Tailscale machine | http://localhost:7575, https://dashboard.<tailnet>.ts.net | in use |
 | `monitoring` | Uptime Kuma, WUD (+ socket-proxy) | http://localhost:3001, http://localhost:3000 | in use |
 | `tools` | IT-Tools | http://localhost:8081 | in use |
+| `event-seeker` | Event Seeker (own image, from the `event-seeker` repo) | http://localhost:8765 | in use |
 
 Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md), by stage.
 
@@ -115,6 +116,8 @@ apps the `/ping` endpoint answers without login.
 | Bazarr | `http://host.docker.internal:6767` |
 | qBittorrent | `http://host.docker.internal:8080` |
 | Homarr | `http://host.docker.internal:7575` |
+| Event Seeker | `http://host.docker.internal:8765/health` |
+| Event Seeker sources | `http://host.docker.internal:8765/health/sources` |
 
 ### Showing it in Homarr
 
@@ -151,6 +154,66 @@ as `sha256:...` and only means a new build was published; containers pinned to a
 
 Both commands need Docker Desktop running; "cannot find the file specified" on the
 `dockerDesktopLinuxEngine` pipe means it is not.
+
+## event-seeker
+
+A site that collects shows from venue sites (Barby, Reading 3, Zappa) and emails an alert when
+a followed artist gets a new show. It is a separate project
+([ron45700/event-seeker](https://github.com/ron45700/event-seeker)); this stack only runs its
+published image, the same way the other stacks run third-party images.
+
+### First run
+
+1. `cd stacks/event-seeker`, copy `.env.example` to `.env`. It can stay as is: email and
+   Telegram are off until their values are filled in.
+2. `docker compose up -d`, open http://localhost:8765.
+3. To keep the users and subscriptions from a development copy, stop the stack and put that
+   copy's `data/event_seeker.db` in `appdata/event-seeker/` before starting it.
+
+If the pull fails with `denied` / `unauthorized`, the image is still private: on GitHub open
+the `event-seeker` package (profile -> Packages) -> Package settings -> Change visibility ->
+Public. A package is created private on its first publish, whatever the repo's visibility.
+
+### Updating
+
+The image is rebuilt by a GitHub Action on every push to the `event-seeker` repo's `main`
+(after its tests pass). WUD shows the new build as a digest change on `latest`. Then:
+
+```bash
+cd stacks/event-seeker
+docker compose pull
+docker compose up -d
+```
+
+Once Dockge is installed this is the stack's **Update** button. To go back to an older build,
+set the image tag to that commit's `sha-<short sha>` tag instead of `latest`.
+
+### On the dashboard and in Uptime Kuma
+
+- **Homarr:** Manage -> Apps -> New app. Name `Event Seeker`, URL = the host's LAN IP or
+  Tailscale name with port 8765 (what the browser opens), then add the app to the board. For
+  the up/down dot on the tile, set the ping URL to `http://host.docker.internal:8765/health`.
+- **Uptime Kuma:** two HTTP(s) monitors (in the table above), then add both to the status page
+  group so they show in Homarr.
+  - `/health` answers 200 while the site itself is up.
+  - `/health/sources` answers 503 when a venue site has failed 3 hourly runs in a row or the
+    hourly run stopped, so the monitor goes red when shows stop coming in. A check every
+    10-15 minutes is enough; the data changes once an hour. For one monitor per venue use
+    `/health/sources/barby`, `/reading3`, `/zappa`.
+
+### Telegram alerts
+
+Event Seeker sends its own Telegram message when a source breaks and when it recovers, without
+depending on Uptime Kuma. Create a bot with @BotFather, fill `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_ID` in `.env`, `docker compose up -d`, and check it with:
+
+```bash
+docker compose exec event-seeker python -m app.main test-alert
+```
+
+Unlike Uptime Kuma's notifications (postponed to the home server, see the roadmap), these are
+safe to turn on already on the test PC: they fire when a venue site breaks, not when this
+machine is shut down. Uptime Kuma can later use the same bot and chat id.
 
 ## tools (IT-Tools)
 
