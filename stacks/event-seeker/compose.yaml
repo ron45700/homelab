@@ -19,6 +19,10 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - SOURCE_ALERT_AFTER_FAILURES=${SOURCE_ALERT_AFTER_FAILURES:-3}
+      # Admin panel (/#/admin) for managing registered users. Off while ADMIN_PASSWORD is
+      # empty. ADMIN_EMAIL only limits who sees the menu entry; the password is the protection.
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
     volumes:
       # The SQLite database (users, subscriptions, events) and the thumbnail cache.
       - ./appdata/event-seeker:/app/data
