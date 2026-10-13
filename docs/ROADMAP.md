@@ -19,6 +19,7 @@ There are two stages:
 | IT-Tools | `tools` | 2026-10-08 |
 | WUD, reading Docker through a read-only socket proxy | `monitoring` | 2026-10-08 |
 | Event Seeker, as a published image (`ghcr.io/ron45700/event-seeker`) with health endpoints for Uptime Kuma and its own Telegram alerts | `event-seeker` | 2026-10-09 |
+| Tailscale SSH on the home server (SSH through the tailnet from anywhere, next to key-only OpenSSH on the LAN) | host, not Docker | 2026-10-12 |
 
 ## Stage 1 - Testing (desktop PC)
 
@@ -34,7 +35,6 @@ There are two stages:
 | Uptime Kuma notifications | Telegram message when a service goes down | `monitoring` | Postponed to the server on purpose: on the test PC every shutdown would trigger alerts. No new container. Reuse the bot and chat id already set up for Event Seeker's alerts (`stacks/event-seeker/.env`). |
 | [Restic](https://restic.net/) backups | Nightly encrypted backup of every `appdata/` folder (config and databases, not media) | host, scheduled | Target: an external disk, maybe a second off-site target later. Covers homelab and streameron. |
 | [Cockpit](https://cockpit-project.org/) | Web admin for the machine itself (disks, services, logs, updates) | host, not Docker | Linux only. Document under `docs/host-setup.md`. |
-| [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) | SSH into the server through the tailnet, no keys to manage | host, not Docker | Linux only. Document under `docs/host-setup.md`. |
 | System metrics: [Beszel](https://github.com/henrygd/beszel) **or** [Dash.](https://github.com/MauriceNino/dashdot) | CPU, RAM, space and I/O per disk, temperatures of the server | `monitoring` | Not decided yet, see Open decisions. Needs real Linux to see the hardware (temperatures, disks). |
 | [Scrutiny](https://github.com/AnalogJ/scrutiny) | Disk health (SMART) and disk temperature over time, with a warning before a disk fails | `monitoring` | Needs direct access to the disks, so Linux only. |
 | [Dockge](https://github.com/louislam/dockge) | Web UI to start/stop/edit the compose stacks | `dockge` | Works on one folder per stack, which is this repo's layout. Needs the Docker socket. |
@@ -46,7 +46,6 @@ There are two stages:
 
 ## Open decisions
 
-- **Linux distribution** for the dedicated laptop. Not needed before the server is set up.
 - **Dockge and the Docker socket.** Dockge must manage containers, so the read-only proxy is not
   enough for it. Decide when it is added.
 
@@ -62,6 +61,9 @@ The 512GB NVMe holds what benefits from speed: the OS, Docker images, every stac
 read sequentially go on the big disk: Immich originals, the media library, downloads.
 
 ## Decided
+
+- **Linux distribution (2026-10-11):** Ubuntu Server 26.04 LTS, no desktop environment, on the
+  dedicated laptop. Host setup (OS, SSH, Tailscale, storage, Docker) is documented outside this repo.
 
 - **Photos and files (2026-10-08):** Immich for photos, Nextcloud for files, Immich first.
   Nextcloud is strong for files but basic for photos; Immich is built only for photos.
