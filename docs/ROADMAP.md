@@ -20,6 +20,7 @@ There are two stages:
 | WUD, reading Docker through a read-only socket proxy | `monitoring` | 2026-10-08 |
 | Event Seeker, as a published image (`ghcr.io/ron45700/event-seeker`) with health endpoints for Uptime Kuma and its own Telegram alerts | `event-seeker` | 2026-10-09 |
 | Tailscale SSH on the home server (SSH through the tailnet from anywhere, next to key-only OpenSSH on the LAN) | host, not Docker | 2026-10-12 |
+| Dockge 1.5.0 at port 5001, managing every stack in `stacks/` plus streameron (server-only symlink `stacks/streameron`, ignored via `.git/info/exclude`) | `dockge/` (outside `stacks/`) | 2026-10-15 |
 
 ## Stage 1 - Testing (desktop PC)
 
@@ -37,7 +38,6 @@ There are two stages:
 | [Cockpit](https://cockpit-project.org/) | Web admin for the machine itself (disks, services, logs, updates) | host, not Docker | Linux only. Document under `docs/host-setup.md`. |
 | System metrics: [Beszel](https://github.com/henrygd/beszel) **or** [Dash.](https://github.com/MauriceNino/dashdot) | CPU, RAM, space and I/O per disk, temperatures of the server | `monitoring` | Not decided yet, see Open decisions. Needs real Linux to see the hardware (temperatures, disks). |
 | [Scrutiny](https://github.com/AnalogJ/scrutiny) | Disk health (SMART) and disk temperature over time, with a warning before a disk fails | `monitoring` | Needs direct access to the disks, so Linux only. |
-| [Dockge](https://github.com/louislam/dockge) | Web UI to start/stop/edit the compose stacks | `dockge` | Works on one folder per stack, which is this repo's layout. Needs the Docker socket. |
 | [FileBrowser](https://github.com/gtsteffaniak/filebrowser) | Browse and manage the server's files from the browser | `tools` | Wait for the final disk layout. |
 | Pi-hole | Network-wide ad blocking / DNS | `network` | Moves here from the old Raspberry Pi 3. Host must be wired to the router with a reserved IP. |
 | [n8n](https://github.com/n8n-io/n8n) | Workflow automation | `automation` | Later; not needed for the server to be useful. |
@@ -45,9 +45,6 @@ There are two stages:
 | [Nextcloud AIO](https://github.com/nextcloud/all-in-one) | Files sync and sharing (Drive replacement), calendar, contacts | `cloud` | Files only, photos go to Immich. Heaviest item; manages its own containers. Add last. |
 
 ## Open decisions
-
-- **Dockge and the Docker socket.** Dockge must manage containers, so the read-only proxy is not
-  enough for it. Decide when it is added.
 
 - **Beszel or Dash. for system metrics.** Beszel: very light, keeps history, alerts, per-container
   usage, but shows in Homarr only as an app tile / iFrame. Dash.: nicer live view and (to be
@@ -75,6 +72,11 @@ read sequentially go on the big disk: Immich originals, the media library, downl
 
 - **Docker socket for read-only tools (2026-10-08):** never mounted into the tool; they go
   through `socket-proxy`.
+
+- **Dockge and the Docker socket (2026-10-15):** Dockge gets the full socket, the one exception
+  (it must create and stop containers). It lives outside `stacks/`, is for me only (port 5001 is
+  not shared over Tailscale), and its web console stays off. Compose files are edited in git, not
+  in Dockge's editor; Delete is never used.
 
 - **Log viewer (2026-10-09):** Dozzle, in the `monitoring` stack, added already in the testing
   stage because it is needed to debug playback stalls. It shows what containers print (Jellyfin,
