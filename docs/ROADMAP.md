@@ -1,14 +1,9 @@
 # Roadmap
 
-What is planned but not installed yet, grouped by the stage it belongs to. Move an item to the
-"Stacks" table in the [README](../README.md) once it is running.
-
-There are two stages:
-
-- **Stage 1 - Testing.** The desktop PC (Windows + Docker Desktop) simulates the server. Only
-  things that run well there and are easy to move later.
-- **Stage 2 - Home server.** The dedicated laptop (i7, 16GB RAM, 512GB NVMe), planned to run
-  Linux, with permanent storage. Everything that needs Linux, a fixed disk layout, or is heavy.
+What is planned but not installed yet. Everything runs on the home server (dedicated laptop, i7,
+16GB RAM, 512GB NVMe, Ubuntu Server); the desktop PC that served as the testing stage until
+2026-10-14 is no longer used. Move an item to the Done table once it is running, and add it to the
+"Stacks" table in the [README](../README.md) if it is a stack.
 
 ## Done
 
@@ -22,20 +17,15 @@ There are two stages:
 | Tailscale SSH on the home server (SSH through the tailnet from anywhere, next to key-only OpenSSH on the LAN) | host, not Docker | 2026-10-12 |
 | Dockge 1.5.0 at port 5001, managing every stack in `stacks/` plus streameron (server-only symlink `stacks/streameron`, ignored via `.git/info/exclude`) | `dockge/` (outside `stacks/`) | 2026-10-15 |
 
-## Stage 1 - Testing (desktop PC)
-
-| Tool | What it is for | Stack | Notes |
-|---|---|---|---|
-| Homarr widgets | Sonarr/Radarr calendar, download queue, Seerr requests | `dashboard` | Integrations are already connected; only board layout. |
-| [Dozzle](https://github.com/amir20/dozzle) | Live logs of every container (homelab and streameron) in the browser, to see what happens at the moment playback stalls | `monitoring` | Next to add. Reads Docker through `socket-proxy` (`DOCKER_HOST=tcp://socket-proxy:2375`; the proxy may also need `INFO=1`). Stores nothing, so no `appdata/`. Pick a free port (8080 is Dozzle's default and may be taken). On the dashboard: a Homarr app tile, optionally an iFrame widget. |
-
-## Stage 2 - Home server (dedicated laptop, Linux)
+## Planned
 
 | Tool | What it is for | Stack / place | Notes |
 |---|---|---|---|
-| Uptime Kuma notifications | Telegram message when a service goes down | `monitoring` | Postponed to the server on purpose: on the test PC every shutdown would trigger alerts. No new container. Reuse the bot and chat id already set up for Event Seeker's alerts (`stacks/event-seeker/.env`). |
+| Homarr widgets | Sonarr/Radarr calendar, download queue, Seerr requests | `dashboard` | Integrations are already connected; only board layout. |
+| [Dozzle](https://github.com/amir20/dozzle) | Live logs of every container (homelab and streameron) in the browser, to see what happens at the moment playback stalls | `monitoring` | Next to add. Reads Docker through `socket-proxy` (`DOCKER_HOST=tcp://socket-proxy:2375`; the proxy may also need `INFO=1`). Stores nothing, so no `appdata/`. Pick a free port (8080 is Dozzle's default and may be taken). On the dashboard: a Homarr app tile, optionally an iFrame widget. |
+| Uptime Kuma notifications | Telegram message when a service goes down | `monitoring` | Can be added now that everything runs on the server (it was postponed so the test PC's shutdowns would not trigger alerts). No new container. Reuse the bot and chat id already set up for Event Seeker's alerts (`stacks/event-seeker/.env`). |
 | [Restic](https://restic.net/) backups | Nightly encrypted backup of every `appdata/` folder (config and databases, not media) | host, scheduled | Target: an external disk, maybe a second off-site target later. Covers homelab and streameron. |
-| [Cockpit](https://cockpit-project.org/) | Web admin for the machine itself (disks, services, logs, updates) | host, not Docker | Linux only. Document under `docs/host-setup.md`. |
+| [Cockpit](https://cockpit-project.org/) | Web admin for the machine itself (disks, services, logs, updates) | host, not Docker | Linux only. Host setup is documented outside this repo (see Decided). |
 | System metrics: [Beszel](https://github.com/henrygd/beszel) **or** [Dash.](https://github.com/MauriceNino/dashdot) | CPU, RAM, space and I/O per disk, temperatures of the server | `monitoring` | Not decided yet, see Open decisions. Needs real Linux to see the hardware (temperatures, disks). |
 | [Scrutiny](https://github.com/AnalogJ/scrutiny) | Disk health (SMART) and disk temperature over time, with a warning before a disk fails | `monitoring` | Needs direct access to the disks, so Linux only. |
 | [FileBrowser](https://github.com/gtsteffaniak/filebrowser) | Browse and manage the server's files from the browser | `tools` | Wait for the final disk layout. |
@@ -65,10 +55,11 @@ read sequentially go on the big disk: Immich originals, the media library, downl
 - **Photos and files (2026-10-08):** Immich for photos, Nextcloud for files, Immich first.
   Nextcloud is strong for files but basic for photos; Immich is built only for photos.
 
-- **Backups (2026-10-08):** Restic, nightly, set up when the server is built. Only `appdata/`
+- **Backups (2026-10-08):** Restic, nightly, set up on the server. Only `appdata/`
   (config and databases); media is not backed up. A private git repo was considered and dropped:
   `appdata/` is mostly live SQLite databases and holds secrets (API keys, Tailscale identities).
-  Moving `appdata/` from the test PC to the server is a separate one-time copy.
+  The one-time copy of `appdata/` from the test PC to the server was done on 2026-10-13, separately
+  from the backups.
 
 - **Docker socket for read-only tools (2026-10-08):** never mounted into the tool; they go
   through `socket-proxy`.
@@ -78,17 +69,17 @@ read sequentially go on the big disk: Immich originals, the media library, downl
   not shared over Tailscale), and its web console stays off. Compose files are edited in git, not
   in Dockge's editor; Delete is never used.
 
-- **Log viewer (2026-10-09):** Dozzle, in the `monitoring` stack, added already in the testing
-  stage because it is needed to debug playback stalls. It shows what containers print (Jellyfin,
+- **Log viewer (2026-10-09):** Dozzle, in the `monitoring` stack, because it is needed to debug
+  playback stalls. It shows what containers print (Jellyfin,
   Sonarr, qBittorrent...). It does not show Jellyfin's FFmpeg transcode logs (files, under
-  Jellyfin's Dashboard > Logs) or disk errors of the host (Windows Event Viewer now, Cockpit on
-  the server). Heavier log stacks (Loki + Grafana) were not chosen: no need to keep or search
+  Jellyfin's Dashboard > Logs) or disk errors of the host (Cockpit, or `journalctl`
+  on the server). Heavier log stacks (Loki + Grafana) were not chosen: no need to keep or search
   history for a single user.
 
 - **Own projects on the server (2026-10-09):** a project of mine (Event Seeker) is not cloned
   or built on the server. Its repo publishes an image to GitHub's registry (ghcr.io) on every
   push, and a stack here runs that image like any third-party one. Updating is then pull + up
-  (Dockge's Update button later), and WUD reports new builds. ghcr.io was chosen over Docker
+  (Dockge's Update button), and WUD reports new builds. ghcr.io was chosen over Docker
   Hub because the Action pushes with the repo's built-in token: no extra account or secrets.
 
 ## Related, in the streameron repo

@@ -4,9 +4,9 @@ Everything on the home server that is not the streaming system. The streaming st
 (Jellyfin, *arr, qBittorrent, ...) lives in its own repo, `streameron`, and the two repos do not
 depend on each other.
 
-Currently in the testing stage: a desktop PC (Windows + Docker Desktop) simulates the server
-before everything moves to a dedicated Linux machine. What is planned for each stage is in
-[docs/ROADMAP.md](docs/ROADMAP.md).
+Runs on the home server: a dedicated laptop with Ubuntu Server and Docker Engine, reached over
+Tailscale. Until 2026-10-14 a desktop PC (Windows + Docker Desktop) served as the testing stage.
+What is planned next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Screenshots
 
@@ -30,7 +30,8 @@ stacks/<name>/
   appdata/        # the apps' data (git-ignored, created on first run)
 ```
 
-Outside `stacks/`: `docs/ROADMAP.md` (what is planned) and `docs/images/` (screenshots).
+Outside `stacks/`: `dockge/` (the stack manager, kept out of `stacks/` so it never manages itself),
+`docs/ROADMAP.md` (what is planned) and `docs/images/` (screenshots).
 
 Run a stack from inside its folder:
 
@@ -41,14 +42,17 @@ docker compose up -d
 
 ## Stacks
 
+`<host>` below is the server's Tailscale name or LAN IP (`localhost` when working on the server itself).
+
 | Stack | Services | Address | Status |
 |---|---|---|---|
-| `dashboard` | Homarr + its Tailscale machine | http://localhost:7575, https://dashboard.<tailnet>.ts.net | in use |
-| `monitoring` | Uptime Kuma, WUD (+ socket-proxy) | http://localhost:3001, http://localhost:3000 | in use |
-| `tools` | IT-Tools | http://localhost:8081 | in use |
-| `event-seeker` | Event Seeker (own image, from the `event-seeker` repo) | http://localhost:8765 | in use |
+| `dashboard` | Homarr + its Tailscale machine | http://<host>:7575, https://dashboard.<tailnet>.ts.net | in use |
+| `monitoring` | Uptime Kuma, WUD (+ socket-proxy) | http://<host>:3001, http://<host>:3000 | in use |
+| `tools` | IT-Tools | http://<host>:8081 | in use |
+| `event-seeker` | Event Seeker (own image, from the `event-seeker` repo) | http://<host>:8765 | in use |
+| `dockge` (in `dockge/`, not a stack) | Dockge, manages every stack above plus streameron | http://<host>:5001 | in use |
 
-Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md), by stage.
+Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Conventions
 
@@ -64,14 +68,14 @@ Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md), by
 - **Docker socket.** Access to it is effectively control of the host, so no app container mounts
   it. A tool that only needs to *read* Docker state goes through `socket-proxy` (in the
   `monitoring` stack), which exposes a filtered read-only API. A tool that must *manage*
-  containers (Dockge, later) is a deliberate, documented exception.
+  containers (Dockge, in `dockge/`) is a deliberate, documented exception.
 
 ## dashboard (Homarr)
 
 ### First run
 
 1. `cd stacks/dashboard`, copy `.env.example` to `.env`, fill `SECRET_ENCRYPTION_KEY`.
-2. `docker compose up -d`, open http://localhost:7575 and complete onboarding.
+2. `docker compose up -d`, open http://<host>:7575 and complete onboarding.
 3. Add the streameron integrations. For each one:
    - **Integration URL** (used by Homarr itself): `http://host.docker.internal:<port>`
    - **App URL** (what the browser opens): the host's LAN IP or Tailscale name
@@ -100,7 +104,7 @@ Copied along, the machine keeps its name. Never run the same state on two hosts 
 ## monitoring (Uptime Kuma)
 
 Uptime Kuma itself needs no settings (the stack's `.env` is for WUD, below).
-`cd stacks/monitoring`, `docker compose up -d`, open http://localhost:3001
+`cd stacks/monitoring`, `docker compose up -d`, open http://<host>:3001
 and create the admin user (choose the embedded SQLite database if asked).
 
 Add one **HTTP(s)** monitor per service. A plain page check is enough for most; for the *arr
@@ -118,6 +122,7 @@ apps the `/ping` endpoint answers without login.
 | Homarr | `http://host.docker.internal:7575` |
 | Event Seeker | `http://host.docker.internal:8765/health` |
 | Event Seeker sources | `http://host.docker.internal:8765/health/sources` |
+| Dockge | `http://host.docker.internal:5001` |
 
 ### Showing it in Homarr
 
@@ -134,10 +139,10 @@ going down, not the whole host going down.
 WUD (What's Up Docker) lists every running container and whether a newer image exists for it.
 It refuses to start without an administrator: copy `stacks/monitoring/.env.example` to `.env`,
 set `WUD_AUTH_ADMIN_USER` and `WUD_AUTH_ADMIN_PASSWORD`, then `docker compose up -d`, open
-http://localhost:3000 and log in with them. The user is kept in `appdata/wud/`.
+http://<host>:3000 and log in with them. The user is kept in `appdata/wud/`.
 
 It only watches: no triggers are configured, so it never pulls or restarts anything. Updating
-stays manual:
+stays manual, with Dockge's **Update** button (whole stack) or by hand:
 
 ```bash
 cd <the stack's folder>
@@ -152,9 +157,6 @@ Containers on a floating tag such as `latest` are compared by image digest, so t
 as `sha256:...` and only means a new build was published; containers pinned to a version tag
 (for example `recyclarr:8`) are compared by version number.
 
-Both commands need Docker Desktop running; "cannot find the file specified" on the
-`dockerDesktopLinuxEngine` pipe means it is not.
-
 ## event-seeker
 
 A site that collects shows from venue sites (Barby, Reading 3, Zappa) and emails an alert when
@@ -166,7 +168,7 @@ published image, the same way the other stacks run third-party images.
 
 1. `cd stacks/event-seeker`, copy `.env.example` to `.env`. It can stay as is: email and
    Telegram are off until their values are filled in.
-2. `docker compose up -d`, open http://localhost:8765.
+2. `docker compose up -d`, open http://<host>:8765.
 3. To keep the users and subscriptions from a development copy, stop the stack and put that
    copy's `data/event_seeker.db` in `appdata/event-seeker/` before starting it.
 
@@ -185,7 +187,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Once Dockge is installed this is the stack's **Update** button. To go back to an older build,
+In Dockge this is the stack's **Update** button. To go back to an older build,
 set the image tag to that commit's `sha-<short sha>` tag instead of `latest`.
 
 ### On the dashboard and in Uptime Kuma
@@ -211,10 +213,40 @@ depending on Uptime Kuma. Create a bot with @BotFather, fill `TELEGRAM_BOT_TOKEN
 docker compose exec event-seeker python -m app.main test-alert
 ```
 
-Unlike Uptime Kuma's notifications (postponed to the home server, see the roadmap), these are
-safe to turn on already on the test PC: they fire when a venue site breaks, not when this
-machine is shut down. Uptime Kuma can later use the same bot and chat id.
+Uptime Kuma can use the same bot and chat id for its own notifications (see the roadmap).
+
+## dockge
+
+A web UI over `docker compose`: start, stop, restart and update each stack, and see its logs. It
+runs normal compose commands in each stack's folder, so the command line keeps working as before.
+
+### First run
+
+1. `cd dockge`, copy `.env.example` to `.env` and set the two **absolute** paths:
+   `STACKS_DIR` (this repo's `stacks/`) and `STREAMERON_DIR` (the streameron clone).
+2. Link streameron into the stacks folder and keep the link out of git (local-only ignore):
+
+   ```bash
+   ln -s "$HOME/streameron" "$HOME/homelab/stacks/streameron"
+   echo 'stacks/streameron' >> ~/homelab/.git/info/exclude
+   ```
+
+3. `docker compose config --quiet`, then `docker compose up -d`, open http://<host>:5001 and
+   create the admin user. All stacks, streameron included, show as **active**.
+
+The stacks path is mounted with the same absolute path inside and outside the container (Dockge
+requirement), which is why it comes from `.env` and not a relative path.
+
+### Rules
+
+- **Full Docker socket**: whoever controls Dockge controls the host. Port 5001 is for me only, never
+  shared over Tailscale; strong admin password; the web console stays off (default since 1.5.0).
+- **Update** works per stack (pulls every image, recreates only containers whose image changed). One
+  service only: `docker compose pull <service> && docker compose up -d <service>` in its folder.
+  Back up `appdata/` before updating.
+- **Never press Delete** on a stack: it deletes the stack's folder.
+- **Edit compose files in git**, not in Dockge's editor (saving there writes the real file).
 
 ## tools (IT-Tools)
 
-`cd stacks/tools`, `docker compose up -d`, open http://localhost:8081. Static web app, no data.
+`cd stacks/tools`, `docker compose up -d`, open http://<host>:8081. Static web app, no data.
