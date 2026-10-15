@@ -1,0 +1,32 @@
+services:
+  # Web UI to start, stop, restart and update the compose stacks.
+  # It lives outside stacks/ on purpose, so it never shows up as a stack it can stop itself.
+  #
+  # The one deliberate exception to the "no app mounts the Docker socket" rule (README):
+  # Dockge must manage containers, so the read-only socket-proxy is not enough.
+  # Full socket access = control of the host, so port 5001 is for me only (never shared
+  # with friends over Tailscale).
+  dockge:
+    image: louislam/dockge:1
+    container_name: dockge
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Dockge's own data (admin user, settings). Covered by the appdata/ rule in .gitignore.
+      - ./appdata:/app/data
+      # Stacks directory. FULL path, and the SAME path on both sides (Dockge requirement:
+      # it runs `docker compose` with host paths, a mismatch writes data to the wrong place).
+      - ${STACKS_DIR}:${STACKS_DIR}
+      # streameron is its own repo and stays where it is. On the server,
+      # stacks/streameron is a symlink to it (git-ignored locally, see the server guide);
+      # this mount lets Dockge follow that link. Same path on both sides, same reason.
+      - ${STREAMERON_DIR}:${STREAMERON_DIR}
+    environment:
+      - DOCKGE_STACKS_DIR=${STACKS_DIR}
+      # Files Dockge creates in the stacks belong to my user, not root.
+      - PUID=1000
+      - PGID=1000
+      # The web console (a root shell on the host) is off by default since Dockge 1.5.0.
+      # Keep it off.
