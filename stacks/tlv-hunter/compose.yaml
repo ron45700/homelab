@@ -1,0 +1,66 @@
+services:
+  # TLV Apartment Hunter: rental posts from Tel Aviv Facebook groups, classified, on a site for me
+  # and a few friends. Own project: https://github.com/ron45700/TAH-tlv_apartment_hunter. The image
+  # is built and published by that repo's GitHub Action on every push to main, so nothing is built
+  # on this machine. The plan behind this file: that repo's docs/DEPLOY.md.
+  #
+  # Never `docker compose down -v`, never Dockge's Delete: the store is ./appdata/store, and the
+  # posts' photos cannot be fetched again (their links expire).
+  site:
+    image: ghcr.io/ron45700/tah-tlv_apartment_hunter:latest
+    container_name: tlv-hunter-site
+    # The image's own command: serve --store --host 0.0.0.0. Published on the server's 127.0.0.1
+    # only (an ssh -L fallback); the tailnet reaches it through tlvapthunter below, never this port.
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # The SQLite store, the photos and the dated backups. Owned by uid 10001 (the image's user).
+      - ./appdata/store:/app/data/store
+    # No env_file: the site holds no key.
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/session', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # The job commands, one at a time, never started by `up`:
+  #   docker compose run --rm jobs python -m tlv_hunter.jobs.<command> ...
+  jobs:
+    image: ghcr.io/ron45700/tah-tlv_apartment_hunter:latest
+    profiles: ["jobs"]
+    # APIFY_TOKEN and OPENAI_API_KEY, for this service only (git-ignored, see .gitignore here).
+    env_file: jobs.env
+    volumes:
+      - ./appdata/store:/app/data/store
+      # Plain files only, no SQLite: the pages and reports some commands write, and the exports.
+      - ./appdata/labeling:/app/data/labeling
+      - ./appdata/gate_d:/app/data/gate_d
+      - ./appdata/store_exports:/app/data/store_exports
+    init: true
+
+  # Gives the site its own machine in the tailnet, named "tlvapthunter":
+  #   https://tlvapthunter.<tailnet>.ts.net
+  # Serves ONLY the site (see tailscale/serve.json). The one machine shared with friends.
+  tailscale-tlvapthunter:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-tlvapthunter
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}     # only needed if ./appdata/tailscale has no state yet
+      - TS_AUTH_ONCE=true
+      - TS_HOSTNAME=tlvapthunter
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=true
+    volumes:
+      - ./appdata/tailscale:/var/lib/tailscale   # machine identity (secret, not in git)
+      - ./tailscale:/config:ro                   # serve.json (in git)
+    depends_on:
+      - site
+    restart: unless-stopped

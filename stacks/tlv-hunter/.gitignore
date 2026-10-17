@@ -1,0 +1,2 @@
+# The job keys (the repo's root .gitignore covers .env and appdata/, not this name).
+jobs.env

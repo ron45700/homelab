@@ -50,6 +50,7 @@ docker compose up -d
 | `monitoring` | Uptime Kuma, WUD (+ socket-proxy) | http://<host>:3001, http://<host>:3000 | in use |
 | `tools` | IT-Tools | http://<host>:8081 | in use |
 | `event-seeker` | Event Seeker (own image, from the `event-seeker` repo) | http://<host>:8765 | in use |
+| `tlv-hunter` | TLV Apartment Hunter (own image) + its Tailscale machine | https://tlvapthunter.<tailnet>.ts.net | planned |
 | `dockge` (in `dockge/`, not a stack) | Dockge, manages every stack above plus streameron | http://<host>:5001 | in use |
 
 Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -214,6 +215,82 @@ docker compose exec event-seeker python -m app.main test-alert
 ```
 
 Uptime Kuma can use the same bot and chat id for its own notifications (see the roadmap).
+
+## tlv-hunter
+
+Rental posts from public Tel Aviv apartment Facebook groups, classified once by a language model,
+on a site with per-user filters. A separate project
+([ron45700/TAH-tlv_apartment_hunter](https://github.com/ron45700/TAH-tlv_apartment_hunter)); its
+plan for this stack is that repo's `docs/DEPLOY.md`. This stack only runs its published image
+(`ghcr.io/ron45700/tah-tlv_apartment_hunter`), with its own Tailscale machine, `tlvapthunter`,
+like the dashboard's.
+
+**The store is `appdata/store/`** (SQLite, the photos, the dated backups). The photos cannot be
+fetched again, so: **never `docker compose down -v`, never Dockge's Delete**, and `appdata/store/`
+is never copied by hand while the site runs (use `export_backup`, below).
+
+The job commands run one at a time, from this folder (never two at once):
+
+```bash
+docker compose run --rm jobs python -m tlv_hunter.jobs.<command> ...
+```
+
+Every command that calls Apify or OpenAI is **paid**; each run needs my explicit go.
+
+### First run (a fresh store)
+
+1. `cd stacks/tlv-hunter`; copy `.env.example` to `.env` (a new auth key: not reusable, not
+   ephemeral, no tags) and `jobs.env.example` to `jobs.env` (the two keys); `chmod 600 .env jobs.env`.
+2. Create the data folders **before** the first start (Docker would create them as root, and the
+   image runs as uid 10001):
+
+   ```bash
+   mkdir -p appdata/store appdata/labeling appdata/gate_d appdata/store_exports appdata/tailscale
+   sudo chown -R 10001:10001 appdata/store appdata/labeling appdata/gate_d appdata/store_exports
+   ```
+
+3. `docker compose pull`, then check the SQLite in the image (3.46.1 expected):
+   `docker compose run --rm jobs python -c "import sqlite3; print(sqlite3.sqlite_version)"`.
+4. **PAID, on my go:** the first collection run creates the store, 30 posts per group:
+   `docker compose run --rm jobs python -m tlv_hunter.jobs.run_once --bootstrap --max-posts 30`.
+   Never `--bootstrap` again.
+5. **PAID, on my go:** `docker compose run --rm jobs python -m tlv_hunter.jobs.classify_pending --cap 0.10`.
+6. The admin, once (asks the username and the password twice, hidden):
+   `docker compose run --rm jobs python -m tlv_hunter.jobs.create_admin`.
+7. `docker compose up -d site tailscale-tlvapthunter`. On the Machines page, `tlvapthunter` ->
+   `...` -> **Disable Key Expiry**; then clear `TS_AUTHKEY` in `.env`.
+8. The `Host`/`Origin` probe and a real sign-in, as in the repo's `docs/DEPLOY.md`, before anyone
+   else is let in.
+
+Port 8000 is published on the server's `127.0.0.1` only; the tailnet reaches the site only through
+`tlvapthunter` (443).
+
+### Updating
+
+The image is rebuilt by the repo's GitHub Action on every push to its `main`; WUD shows the new
+build as a digest change on `latest`. **Before each update, a fresh backup** (restic backs up
+`appdata/store_exports/` and `appdata/tailscale/`, never the live `appdata/store/`):
+
+```bash
+cd stacks/tlv-hunter
+docker compose run --rm jobs python -m tlv_hunter.jobs.export_backup
+docker compose pull
+docker compose up -d
+```
+
+In Dockge this is the stack's **Update** button, after the `export_backup`. To go back to an
+older build, set the image tag of `site` and `jobs` to that commit's `sha-<short sha>` tag.
+
+### A forgotten admin password
+
+With the site stopped: `docker compose stop site`, then
+`docker compose run --rm jobs python -m tlv_hunter.jobs.reset_admin_password`, then
+`docker compose up -d site`.
+
+### Moving hosts
+
+Stop the stack, copy `appdata/`, `.env` and `jobs.env` to the new host. `appdata/tailscale/` is
+the `tlvapthunter` machine's identity (a secret); never run the same state on two hosts at once.
 
 ## dockge
 
