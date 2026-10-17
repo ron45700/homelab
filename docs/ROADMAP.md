@@ -16,6 +16,7 @@ What is planned but not installed yet. Everything runs on the home server (dedic
 | Event Seeker, as a published image (`ghcr.io/ron45700/event-seeker`) with health endpoints for Uptime Kuma and its own Telegram alerts | `event-seeker` | 2026-10-09 |
 | Tailscale SSH on the home server (SSH through the tailnet from anywhere, next to key-only OpenSSH on the LAN) | host, not Docker | 2026-10-12 |
 | Dockge 1.5.0 at port 5001, managing every stack in `stacks/` plus streameron (server-only symlink `stacks/streameron`, ignored via `.git/info/exclude`) | `dockge/` (outside `stacks/`) | 2026-10-15 |
+| [Restic](https://restic.net/) backups: nightly at 05:00 (systemd timer) of the whole `homelab` and `streameron` folders (every `appdata/` and `.env`, the Tailscale identities, Dockge) and the host's `/etc`, into an encrypted repository on the 1 TB drive. Running stacks are stopped for ~40 s during the copy. Off-machine copy not yet | host, not Docker | 2026-10-17 |
 
 ## Planned
 
@@ -24,7 +25,6 @@ What is planned but not installed yet. Everything runs on the home server (dedic
 | Homarr widgets | Sonarr/Radarr calendar, download queue, Seerr requests | `dashboard` | Integrations are already connected; only board layout. |
 | [Dozzle](https://github.com/amir20/dozzle) | Live logs of every container (homelab and streameron) in the browser, to see what happens at the moment playback stalls | `monitoring` | Next to add. Reads Docker through `socket-proxy` (`DOCKER_HOST=tcp://socket-proxy:2375`; the proxy may also need `INFO=1`). Stores nothing, so no `appdata/`. Pick a free port (8080 is Dozzle's default and may be taken). On the dashboard: a Homarr app tile, optionally an iFrame widget. |
 | Uptime Kuma notifications | Telegram message when a service goes down | `monitoring` | Can be added now that everything runs on the server (it was postponed so the test PC's shutdowns would not trigger alerts). No new container. Reuse the bot and chat id already set up for Event Seeker's alerts (`stacks/event-seeker/.env`). |
-| [Restic](https://restic.net/) backups | Nightly encrypted backup of every `appdata/` folder (config and databases, not media) | host, scheduled | Target: an external disk, maybe a second off-site target later. Covers homelab and streameron. |
 | [Cockpit](https://cockpit-project.org/) | Web admin for the machine itself (disks, services, logs, updates) | host, not Docker | Linux only. Host setup is documented outside this repo (see Decided). |
 | System metrics: [Beszel](https://github.com/henrygd/beszel) **or** [Dash.](https://github.com/MauriceNino/dashdot) | CPU, RAM, space and I/O per disk, temperatures of the server | `monitoring` | Not decided yet, see Open decisions. Needs real Linux to see the hardware (temperatures, disks). |
 | [Scrutiny](https://github.com/AnalogJ/scrutiny) | Disk health (SMART) and disk temperature over time, with a warning before a disk fails | `monitoring` | Needs direct access to the disks, so Linux only. |
@@ -55,8 +55,9 @@ read sequentially go on the big disk: Immich originals, the media library, downl
 - **Photos and files (2026-10-08):** Immich for photos, Nextcloud for files, Immich first.
   Nextcloud is strong for files but basic for photos; Immich is built only for photos.
 
-- **Backups (2026-10-08):** Restic, nightly, set up on the server. Only `appdata/`
-  (config and databases); media is not backed up. A private git repo was considered and dropped:
+- **Backups (2026-10-08, running since 2026-10-17):** Restic, nightly, set up on the server. Only
+  `appdata/`, `.env` files and host config; media is not backed up. Host setup, schedule, retention
+  and restore are documented outside this repo (see Decided, Linux distribution). A private git repo was considered and dropped:
   `appdata/` is mostly live SQLite databases and holds secrets (API keys, Tailscale identities).
   The one-time copy of `appdata/` from the test PC to the server was done on 2026-10-13, separately
   from the backups.

@@ -50,7 +50,7 @@ docker compose up -d
 | `monitoring` | Uptime Kuma, WUD (+ socket-proxy) | http://<host>:3001, http://<host>:3000 | in use |
 | `tools` | IT-Tools | http://<host>:8081 | in use |
 | `event-seeker` | Event Seeker (own image, from the `event-seeker` repo) | http://<host>:8765 | in use |
-| `tlv-hunter` | TLV Apartment Hunter (own image) + its Tailscale machine | https://tlvapthunter.<tailnet>.ts.net | planned |
+| `tlv-hunter` | TLV Apartment Hunter (own image) + its Tailscale machine | https://tlvapthunter.<tailnet>.ts.net | in use (2026-10-17) |
 | `dockge` (in `dockge/`, not a stack) | Dockge, manages every stack above plus streameron | http://<host>:5001 | in use |
 
 Everything not installed yet is listed in [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -227,7 +227,7 @@ like the dashboard's.
 
 **The store is `appdata/store/`** (SQLite, the photos, the dated backups). The photos cannot be
 fetched again, so: **never `docker compose down -v`, never Dockge's Delete**, and `appdata/store/`
-is never copied by hand while the site runs (use `export_backup`, below).
+is never copied by hand while the site runs (use `export_backup --no-photos`, below).
 
 The job commands run one at a time, from this folder (never two at once):
 
@@ -259,8 +259,8 @@ Every command that calls Apify or OpenAI is **paid**; each run needs my explicit
    `docker compose run --rm jobs python -m tlv_hunter.jobs.create_admin`.
 7. `docker compose up -d site tailscale-tlvapthunter`. On the Machines page, `tlvapthunter` ->
    `...` -> **Disable Key Expiry**; then clear `TS_AUTHKEY` in `.env`.
-8. The `Host`/`Origin` probe and a real sign-in, as in the repo's `docs/DEPLOY.md`, before anyone
-   else is let in.
+8. A real sign-in through `https://tlvapthunter.<tailnet>.ts.net` (done 2026-10-17: a sign-in is a
+   write checked against `Host`/`Origin`, so it is the probe), before anyone else is let in.
 
 Port 8000 is published on the server's `127.0.0.1` only; the tailnet reaches the site only through
 `tlvapthunter` (443).
@@ -268,18 +268,59 @@ Port 8000 is published on the server's `127.0.0.1` only; the tailnet reaches the
 ### Updating
 
 The image is rebuilt by the repo's GitHub Action on every push to its `main`; WUD shows the new
-build as a digest change on `latest`. **Before each update, a fresh backup** (restic backs up
-`appdata/store_exports/` and `appdata/tailscale/`, never the live `appdata/store/`):
+build as a digest change on `latest`. **Before each update, a fresh backup** (never while
+`measure_day.sh` runs):
 
 ```bash
 cd stacks/tlv-hunter
-docker compose run --rm jobs python -m tlv_hunter.jobs.export_backup
+docker compose run --rm jobs python -m tlv_hunter.jobs.export_backup --no-photos
 docker compose pull
 docker compose up -d
 ```
 
 In Dockge this is the stack's **Update** button, after the `export_backup`. To go back to an
 older build, set the image tag of `site` and `jobs` to that commit's `sha-<short sha>` tag.
+
+### Backups (restic)
+
+`export_backup --no-photos` writes a checked, dated copy of the database into
+`appdata/store_exports/` (the photos are not exported on this server). Every command that writes a
+dated backup keeps the **7 newest** and deletes the older ones, in `appdata/store/` and in
+`appdata/store_exports/`; nothing else is ever deleted.
+
+For restic:
+
+- **include** `stacks/tlv-hunter/appdata/store_exports/*.sqlite3` (the database copies) and
+  `stacks/tlv-hunter/appdata/tailscale/` (the `tlvapthunter` machine's identity, a secret);
+- **exclude** `stacks/tlv-hunter/appdata/store/` (the live store: a copy taken while the site writes
+  may be torn) and every `images/` folder (the photos: not backed up).
+
+### The measured day (`measure_day.sh`)
+
+One day of collection and classification, measured: for 24 hours from its start, a slot every 30
+minutes (at :00 and :30, none between 00:00 and 07:00 Israel time), each running `run_once` and
+then `classify_pending --cap 0.05`, one after the other. **Every slot is paid** (Apify and OpenAI),
+so it is started only on my go, and **no other job command runs while it does** (not even
+`export_backup`). Everything goes to `appdata/measure/<the start date>.log`.
+
+From this folder (`cd ~/homelab/stacks/tlv-hunter`):
+
+| To | Type |
+|---|---|
+| start it (it keeps running after the SSH window closes) | `bash measure_day.sh start` |
+| check that it runs, and what it did last | `bash measure_day.sh status` |
+| see the log's last lines | `bash measure_day.sh log` (or `bash measure_day.sh log 100`) |
+| follow the log live (Ctrl+C stops the watching, not the day) | `tail -f appdata/measure/*.log` |
+| stop early | `bash measure_day.sh stop` |
+| the totals, at the end of the day | `bash measure_day.sh totals` |
+
+**Stopping early** lets the command running at that moment finish (a collection run is never cut in
+the middle), then stops; if that was `run_once`, its new posts wait for the next
+`classify_pending`. `status` says "not running" once it has stopped. It also stops by itself after
+24 hours, or after 3 failed collection runs in a row (a failed run is logged and the next slot
+covers its window). **The totals** count the slots, the collection runs, the rows and the posts
+stored, Apify's cost as each run reported it, and the classification calls, tokens and cost; the
+real figures are the two bills (Apify's console, OpenAI's usage page).
 
 ### A forgotten admin password
 
