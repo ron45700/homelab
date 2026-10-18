@@ -235,7 +235,10 @@ The job commands run one at a time, from this folder (never two at once):
 docker compose run --rm jobs python -m tlv_hunter.jobs.<command> ...
 ```
 
-Every command that calls Apify or OpenAI is **paid**; each run needs my explicit go.
+Every command that calls Apify or OpenAI is **paid**; each run needs my explicit go. **The
+`scheduler` service runs `run_once` and `classify_pending` by itself: stop it before any manual job
+command** (`docker compose stop scheduler`, which waits for the command it runs to finish), and start
+it again after (`docker compose up -d scheduler`).
 
 ### First run (a fresh store)
 
@@ -245,8 +248,10 @@ Every command that calls Apify or OpenAI is **paid**; each run needs my explicit
    image runs as uid 10001):
 
    ```bash
-   mkdir -p appdata/store appdata/labeling appdata/gate_d appdata/store_exports appdata/tailscale
-   sudo chown -R 10001:10001 appdata/store appdata/labeling appdata/gate_d appdata/store_exports
+   mkdir -p appdata/store appdata/labeling appdata/gate_d appdata/store_exports appdata/tailscale \
+     appdata/measure/scheduler
+   sudo chown -R 10001:10001 appdata/store appdata/labeling appdata/gate_d appdata/store_exports \
+     appdata/measure/scheduler
    ```
 
 3. `docker compose pull`, then check the SQLite in the image (3.46.1 expected):
@@ -268,18 +273,20 @@ Port 8000 is published on the server's `127.0.0.1` only; the tailnet reaches the
 ### Updating
 
 The image is rebuilt by the repo's GitHub Action on every push to its `main`; WUD shows the new
-build as a digest change on `latest`. **Before each update, a fresh backup** (never while
-`measure_day.sh` runs):
+build as a digest change on `latest`. **Before each update, a fresh backup**, with the scheduler
+stopped (never while `measure_day.sh` runs):
 
 ```bash
 cd stacks/tlv-hunter
+docker compose stop scheduler          # waits for the command it runs to finish
 docker compose run --rm jobs python -m tlv_hunter.jobs.export_backup --no-photos
 docker compose pull
-docker compose up -d
+docker compose up -d                   # every service, the scheduler and the bot included
 ```
 
-In Dockge this is the stack's **Update** button, after the `export_backup`. To go back to an
-older build, set the image tag of `site` and `jobs` to that commit's `sha-<short sha>` tag.
+In Dockge this is the stack's **Update** button, after the two commands above. To go back to an
+older build, set the image tag of `site`, `jobs`, `bot` and `scheduler` to that commit's
+`sha-<short sha>` tag.
 
 ### Backups (restic)
 
@@ -294,6 +301,43 @@ For restic:
   `stacks/tlv-hunter/appdata/tailscale/` (the `tlvapthunter` machine's identity, a secret);
 - **exclude** `stacks/tlv-hunter/appdata/store/` (the live store: a copy taken while the site writes
   may be torn) and every `images/` folder (the photos: not backed up).
+
+### The bot (Telegram)
+
+`bot` is @tlv_apartment_hunter_bot: it links accounts (the site's preferences page shows a link that
+opens the bot with a one-time code), sends an alert for each new post that matches a linked user's
+preferences, and takes the alerts' "report" buttons. It is free (the Bot API costs nothing), outbound
+only (long polling, no port), and reads `TELEGRAM_BOT_TOKEN` and `SITE_URL` from `.env`; no other
+service gets the token. **Only one bot may run with the token at a time**, anywhere: never start the
+laptop's while this one runs.
+
+| To | Type |
+|---|---|
+| start it, or again after a change of `.env` | `docker compose up -d bot` |
+| its log | `docker logs --tail 50 tlv-hunter-bot` |
+| stop it | `docker compose stop bot` |
+| send a test alert of a post to me (writes no record) | `docker compose run --rm bot python -m tlv_hunter.jobs.send_test_alert --listing <id prefix>` |
+| the Mini App spike's menu button on my chat, and back | `docker compose run --rm bot python -m tlv_hunter.jobs.telegram_menu --spike` / `--default` |
+
+### The scheduler (continuous collection)
+
+`scheduler` runs a slot every `RUN_INTERVAL_MINUTES` (30 by default, at :00 and :30), none starting
+between `QUIET_FROM` and `QUIET_UNTIL` Israel time (00:00 and 07:00 by default): in each, `run_once`
+then `classify_pending --cap 0.05`, one after the other. **Every slot is paid** (about $0.60 a day for
+Apify and $0.05 for OpenAI at the measured volume). The three settings are read from `.env` when it
+starts, so a change needs `docker compose up -d scheduler`. A failed collection is logged and the next
+slot covers its window; 3 in a row are logged too, and it goes on.
+
+| To | Type |
+|---|---|
+| start it | `docker compose up -d scheduler` |
+| stop it (the command it runs finishes first, up to ~35 minutes) | `docker compose stop scheduler` |
+| its log, live | `docker logs -f tlv-hunter-scheduler` (Ctrl+C stops the watching) |
+| the day's log file | `appdata/measure/scheduler/scheduler.<date>.log` |
+| a day's totals (the same form as the measured day's) | `bash measure_day.sh totals appdata/measure/scheduler/scheduler.<date>.log` |
+
+**Before any manual job command, stop it** (`export_backup`, `reset_admin_password`, a classify by
+hand): job commands never run two at once.
 
 ### The measured day (`measure_day.sh`)
 
@@ -324,9 +368,9 @@ real figures are the two bills (Apify's console, OpenAI's usage page).
 
 ### A forgotten admin password
 
-With the site stopped: `docker compose stop site`, then
+With the site and the scheduler stopped: `docker compose stop site scheduler`, then
 `docker compose run --rm jobs python -m tlv_hunter.jobs.reset_admin_password`, then
-`docker compose up -d site`.
+`docker compose up -d site scheduler`.
 
 ### Moving hosts
 

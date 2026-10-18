@@ -45,6 +45,48 @@ services:
       - ./appdata/store_exports:/app/data/store_exports
     init: true
 
+  # The Telegram bot (@tlv_apartment_hunter_bot): long polling for ever, outbound only (no port).
+  # It links accounts, sends the alerts when the store changes, and takes the alerts' "report"
+  # buttons. TELEGRAM_BOT_TOKEN and SITE_URL come from this folder's .env, to this service only.
+  # Never run a second bot with the same token anywhere (the laptop's included).
+  #   docker compose run --rm bot python -m tlv_hunter.jobs.send_test_alert --listing <prefix>
+  bot:
+    image: ghcr.io/ron45700/tah-tlv_apartment_hunter:latest
+    container_name: tlv-hunter-bot
+    command: ["python", "-m", "tlv_hunter.jobs.bot"]
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - SITE_URL=${SITE_URL:-}
+    volumes:
+      - ./appdata/store:/app/data/store
+    restart: unless-stopped
+    init: true
+    # A stop ends the long poll in progress (25 s) and the alert pass between two sends.
+    stop_grace_period: 45s
+
+  # Continuous collection, PAID (Apify and OpenAI): run_once then classify_pending --cap 0.05,
+  # one after the other, every RUN_INTERVAL_MINUTES, none starting QUIET_FROM-QUIET_UNTIL Israel
+  # time; the three from .env, read at start (a change: `docker compose up -d scheduler`). Logs:
+  # `docker logs tlv-hunter-scheduler` and appdata/measure/scheduler/. STOP IT BEFORE ANY MANUAL
+  # JOB COMMAND (`docker compose stop scheduler`): a stop lets the running command finish.
+  scheduler:
+    image: ghcr.io/ron45700/tah-tlv_apartment_hunter:latest
+    container_name: tlv-hunter-scheduler
+    command: ["python", "-m", "tlv_hunter.jobs.scheduler"]
+    # APIFY_TOKEN and OPENAI_API_KEY, for the two commands it runs; never the bot's token.
+    env_file: jobs.env
+    environment:
+      - RUN_INTERVAL_MINUTES=${RUN_INTERVAL_MINUTES:-30}
+      - QUIET_FROM=${QUIET_FROM:-00:00}
+      - QUIET_UNTIL=${QUIET_UNTIL:-07:00}
+    volumes:
+      - ./appdata/store:/app/data/store
+      - ./appdata/measure/scheduler:/app/data/measure
+    restart: unless-stopped
+    init: true
+    # A collection run can take up to about 35 minutes (the photos' budget, #77): a stop waits.
+    stop_grace_period: 40m
+
   # Gives the site its own machine in the tailnet, named "tlvapthunter":
   #   https://tlvapthunter.<tailnet>.ts.net
   # Serves ONLY the site (see tailscale/serve.json). The one machine shared with friends.
