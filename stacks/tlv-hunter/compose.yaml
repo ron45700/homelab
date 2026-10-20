@@ -75,10 +75,14 @@ services:
     command: ["python", "-m", "tlv_hunter.jobs.scheduler"]
     # APIFY_TOKEN and OPENAI_API_KEY, for the two commands it runs; never the bot's token.
     env_file: jobs.env
+    # Phase 5: the three schedule values seed the site's settings on the first start only; from
+    # then on the admin's schedule page sets them. Retention runs nightly as a DRY RUN until Ron
+    # sets RETENTION_APPLY=yes in .env, after reading a dry run over a dated copy (#471).
     environment:
       - RUN_INTERVAL_MINUTES=${RUN_INTERVAL_MINUTES:-30}
       - QUIET_FROM=${QUIET_FROM:-00:00}
       - QUIET_UNTIL=${QUIET_UNTIL:-07:00}
+      - RETENTION_APPLY=${RETENTION_APPLY:-no}
     volumes:
       - ./appdata/store:/app/data/store
       - ./appdata/measure/scheduler:/app/data/measure
