@@ -64,13 +64,16 @@ services:
     # A stop ends the long poll in progress (25 s) and the alert pass between two sends.
     stop_grace_period: 45s
 
-  # Continuous collection, PAID (Apify and OpenAI): run_once then classify_pending --cap 0.05,
-  # one after the other, every RUN_INTERVAL_MINUTES, none starting QUIET_FROM-QUIET_UNTIL Israel
-  # time; the three from .env, read at start (a change: `docker compose up -d scheduler`). Logs:
-  # `docker logs tlv-hunter-scheduler` and appdata/measure/scheduler/. STOP IT BEFORE ANY MANUAL
-  # JOB COMMAND (`docker compose stop scheduler`): a stop lets the running command finish.
+  # Continuous collection, PAID (Apify and OpenAI): Facebook's run_once then classify_pending
+  # --cap 0.05, and Yad2's run_yad2 (a headed browser under Xvfb) then classify_pending, one run at
+  # a time, Facebook's first when both are due; the intervals and hours are the site's schedule
+  # page (Yad2 off until turned on there). Logs: `docker logs tlv-hunter-scheduler` and
+  # appdata/measure/scheduler/. STOP IT BEFORE ANY MANUAL JOB COMMAND (`docker compose stop
+  # scheduler`): a stop lets the running command finish.
+  # The browser image (that repo's Dockerfile.browser): Playwright's own, as uid 10001 (the store's
+  # owner), with Playwright's seccomp profile (this folder, v1.63.0) for Chromium's sandbox.
   scheduler:
-    image: ghcr.io/ron45700/tah-tlv_apartment_hunter:latest
+    image: ghcr.io/ron45700/tah-tlv_apartment_hunter-browser:latest
     container_name: tlv-hunter-scheduler
     command: ["python", "-m", "tlv_hunter.jobs.scheduler"]
     # APIFY_TOKEN and OPENAI_API_KEY, for the two commands it runs; never the bot's token.
@@ -86,10 +89,31 @@ services:
     volumes:
       - ./appdata/store:/app/data/store
       - ./appdata/measure/scheduler:/app/data/measure
+      # Yad2's browser profile: Yad2's own visitor cookies only (invariant 13), never in git or
+      # the image. Owned by 10001, mode 700.
+      - ./appdata/yad2-profile:/app/data/yad2-profile
+    ipc: host
+    security_opt:
+      - seccomp=./seccomp_profile.json
     restart: unless-stopped
     init: true
-    # A collection run can take up to about 35 minutes (the photos' budget, #77): a stop waits.
-    stop_grace_period: 40m
+    # A Facebook run takes up to about 35 minutes (the photos' budget, #77); a Yad2 morning run has
+    # no cap (#526): a stop waits for the running command.
+    stop_grace_period: 90m
+
+  # A Yad2 run by hand, never started by `up` (the scheduler stopped first, #140):
+  #   docker compose run --rm yad2 xvfb-run -a -s '-screen 0 1920x1080x24' python -m tlv_hunter.jobs.run_yad2
+  yad2:
+    image: ghcr.io/ron45700/tah-tlv_apartment_hunter-browser:latest
+    profiles: ["jobs"]
+    # No key: a Yad2 run calls no model and no Apify.
+    volumes:
+      - ./appdata/store:/app/data/store
+      - ./appdata/yad2-profile:/app/data/yad2-profile
+    ipc: host
+    security_opt:
+      - seccomp=./seccomp_profile.json
+    init: true
 
   # Gives the site its own machine in the tailnet, named "tlvapthunter":
   #   https://tlvapthunter.<tailnet>.ts.net
